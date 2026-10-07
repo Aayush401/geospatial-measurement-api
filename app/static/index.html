@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geospatial Measurement API</title>
+    <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
+    <script src="/static/vendor/leaflet/leaflet.js"></script>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --surface-color: #ffffff;
+            --text-color: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --accent-color: #2563eb;
+            --accent-hover: #1d4ed8;
+            --danger-color: #ef4444;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+            --info-color: #3b82f6;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --radius: 8px;
+            --font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            
+            --poly-color: #3b82f6;
+            --line-color: #f97316;
+            --point-color: #22c55e;
+            --unsup-color: #9ca3af;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: var(--font-family); background: var(--bg-color); color: var(--text-color); line-height: 1.5; padding: 20px; transition: background 0.3s, color 0.3s; }
+        
+        .container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+        h1 { font-size: 1.5rem; font-weight: 600; }
+        .subtitle { color: var(--text-muted); font-size: 0.9rem; }
+        .header-links { display: flex; gap: 15px; align-items: center; }
+        a { color: var(--accent-color); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        
+        button { background: var(--accent-color); color: #fff; border: none; padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: 0.2s; }
+        button:hover { background: var(--accent-hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-outline { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); }
+        .btn-outline:hover { background: var(--border-color); }
+
+        .card { background: var(--surface-color); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border-color); }
+        
+        .upload-zone { border: 2px dashed var(--border-color); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: border 0.3s; }
+        .upload-zone.dragover { border-color: var(--accent-color); background: rgba(37, 99, 235, 0.05); }
+        .upload-zone p { margin-bottom: 15px; color: var(--text-muted); }
+        #fileInput { display: none; }
+
+        .alert { padding: 12px 16px; border-radius: var(--radius); margin-bottom: 20px; display: none; align-items: center; justify-content: space-between; }
+        .alert.error { background: #fef2f2; color: #991b1b; border: 1px solid #f87171; }
+        [data-theme="dark"] .alert.error { background: #7f1d1d; color: #fecaca; border-color: #991b1b; }
+        .alert-close { cursor: pointer; font-weight: bold; padding: 0 8px; }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: var(--surface-color); padding: 15px; border-radius: var(--radius); border: 1px solid var(--border-color); }
+        .stat-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+        .stat-value { font-size: 1.25rem; font-weight: 600; }
+
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: 600px; }
+        @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; height: auto; } }
+
+        #map { width: 100%; height: 100%; min-height: 400px; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--border-color); z-index: 1;}
+
+        .table-container { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+        .table-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .filters { display: flex; gap: 8px; }
+        .chip { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-color); }
+        .chip.active { border-color: var(--accent-color); }
+        .chip-Polygon { border-left: 4px solid var(--poly-color); }
+        .chip-Line { border-left: 4px solid var(--line-color); }
+        .chip-Point { border-left: 4px solid var(--point-color); }
+        .chip-Unsup { border-left: 4px solid var(--unsup-color); }
+        
+        input[type="text"] { padding: 6px 12px; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--surface-color); color: var(--text-color); font-family: inherit; }
+
+        .table-wrapper { flex-grow: 1; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius); }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+        th { position: sticky; top: 0; background: var(--surface-color); padding: 10px; border-bottom: 2px solid var(--border-color); cursor: pointer; user-select: none; }
+        th:hover { background: var(--border-color); }
+        td { padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
+        tr { cursor: pointer; transition: background 0.2s; }
+        tr:hover { background: rgba(37, 99, 235, 0.05); }
+        tr.active { background: rgba(37, 99, 235, 0.15); border-left: 3px solid var(--accent-color); }
+        .details-row { display: none; background: rgba(0,0,0,0.02); }
+        [data-theme="dark"] .details-row { background: rgba(255,255,255,0.02); }
+        .details-row.open { display: table-row; }
+        .details-content { padding: 10px; font-family: monospace; font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
+
+        #spinner { display: none; margin-left: 10px; }
+        .hidden { display: none !important; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; background: var(--border-color); color: var(--text-color); }
+        .badge-COMPLETED { background: rgba(34, 197, 94, 0.2); color: #166534; }
+        [data-theme="dark"] .badge-COMPLETED { color: #4ade80; }
+        .badge-FAILED { background: rgba(239, 68, 68, 0.2); color: #991b1b; }
+        [data-theme="dark"] .badge-FAILED { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>Geospatial Measurement API</h1>
+                <div class="subtitle">Upload a KML or zipped Shapefile to get areas and lengths</div>
+            </div>
+            <div class="header-links">
+                <button id="themeToggle" class="btn-outline" aria-label="Toggle Theme">🌙</button>
+                <a href="/docs" target="_blank">API Docs</a>
+            </div>
+        </header>
+
+        <div id="errorAlert" class="alert error" aria-live="assertive">
+            <span id="errorMsg"></span>
+            <span class="alert-close" onclick="hideError()">×</span>
+        </div>
+
+        <section id="uploadSection" class="card">
+            <div id="dropZone" class="upload-zone" tabindex="0" role="button" aria-label="File upload drop zone">
+                <p>Drag and drop a .zip (Shapefile) or .kml here</p>
+                <p>or</p>
+                <button onclick="document.getElementById('fileInput').click()">Browse Files</button>
+                <input type="file" id="fileInput" accept=".zip,.kml" />
+                <div id="uploadStatus" style="margin-top: 15px; font-weight: bold;">
+                    <span id="uploadFileName"></span>
+                    <span id="spinner">⏳ Processing...</span>
+                </div>
+            </div>
+        </section>
+
+        <section id="resultsSection" class="hidden">
+            <div class="summary-grid">
+                <div class="stat-card">
+                    <div class="stat-label">File</div>
+                    <div class="stat-value" id="statFile">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Status</div>
+                    <div class="stat-value"><span id="statStatus" class="badge">-</span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">CRS</div>
+                    <div class="stat-value" id="statCRS">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Features</div>
+                    <div class="stat-value" id="statFeatures">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Area (ha)</div>
+                    <div class="stat-value" id="statArea">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Length (km)</div>
+                    <div class="stat-value" id="statLength">-</div>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="card" style="padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+                    <div id="map"></div>
+                </div>
+                
+                <div class="table-container card">
+                    <div class="table-controls">
+                        <div class="filters" id="filterChips">
+                            <div class="chip active" data-filter="All">All</div>
+                            <div class="chip chip-Polygon" data-filter="Polygon">Polygons</div>
+                            <div class="chip chip-Line" data-filter="LineString">Lines</div>
+                            <div class="chip chip-Point" data-filter="Point">Points</div>
+                            <div class="chip chip-Unsup" data-filter="Unsupported">Unsupported</div>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="searchInput" placeholder="Search properties..." aria-label="Search properties" />
+                            <button id="btnJson" class="btn-outline">↓ JSON</button>
+                            <button id="btnCsv" class="btn-outline">↓ CSV</button>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="dataTable">
+                            <thead>
+                                <tr>
+                                    <th data-sort="index">#</th>
+                                    <th data-sort="geometry_type">Type</th>
+                                    <th data-sort="name">Name / Prop</th>
+                                    <th data-sort="area">Area (m²)</th>
+                                    <th data-sort="area_ha">Area (ha)</th>
+                                    <th data-sort="length">Length (m)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // -- THEME LOGIC --
+        const themeToggle = document.getElementById('themeToggle');
+        const getPreferredTheme = () => localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        const setTheme = (theme) => {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+        };
+        setTheme(getPreferredTheme());
+        themeToggle.addEventListener('click', () => setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
+
+        // -- STATE --
+        let currentData = null;
+        let map = null;
+        let geojsonLayer = null;
+        let sortCol = 'index';
+        let sortAsc = true;
+        let activeFilter = 'All';
+        let searchQuery = '';
+        let rowElements = {}; // index -> tr
+        let layerMap = {}; // index -> leaflet layer
+
+        // -- UTILS --
+        const formatNumber = (num, decimals = 2) => num === null || num === undefined ? '-' : num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        const showError = (msg) => {
+            document.getElementById('errorMsg').textContent = msg;
+            document.getElementById('errorAlert').style.display = 'flex';
+            document.getElementById('spinner').style.display = 'none';
+        };
+        const hideError = () => document.getElementById('errorAlert').style.display = 'none';
+        
+        // -- UPLOAD LOGIC --
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        const preventDefaults = (e) => { e.preventDefault(); e.stopPropagation(); };
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, preventDefaults, false));
+        ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false));
+        ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false));
+
+        dropZone.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        async function handleFile(file) {
+            hideError();
+            document.getElementById('resultsSection').classList.add('hidden');
+            document.getElementById('uploadFileName').textContent = `${file.name} (${formatNumber(file.size / 1024 / 1024)} MB)`;
+            document.getElementById('spinner').style.display = 'inline-block';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const resp = await fetch('/api/files/', { method: 'POST', body: formData });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || `Upload failed with status ${resp.status}`);
+                }
+                const fileInfo = await resp.json();
+                await fetchMeasurements(fileInfo.id, fileInfo);
+            } catch (err) {
+                showError(err.message || "A network error occurred.");
+            } finally {
+                document.getElementById('spinner').style.display = 'none';
+            }
+        }
+
+        async function fetchMeasurements(id, fileInfo) {
+            try {
+                const resp = await fetch(`/api/files/${id}/measurements/?limit=1000`);
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || `Failed to fetch measurements (${resp.status})`);
+                }
+                const data = await resp.json();
+                currentData = { fileInfo, data };
+                renderUI();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // -- RENDERING --
+        function renderUI() {
+            document.getElementById('resultsSection').classList.remove('hidden');
+            const { fileInfo, data } = currentData;
+            
+            // Stats
+            document.getElementById('statFile').textContent = fileInfo.filename;
+            const statusEl = document.getElementById('statStatus');
+            statusEl.textContent = fileInfo.status;
+            statusEl.className = `badge badge-${fileInfo.status}`;
+            document.getElementById('statCRS').textContent = fileInfo.crs || 'Unknown';
+            document.getElementById('statFeatures').textContent = data.total;
+            
+            let totalAreaHa = 0, totalLengthKm = 0;
+            data.features.forEach(f => {
+                if (f.measurement && f.measurement.area_hectares) totalAreaHa += f.measurement.area_hectares;
+                if (f.measurement && f.measurement.length_m) totalLengthKm += (f.measurement.length_m / 1000);
+            });
+            document.getElementById('statArea').textContent = totalAreaHa > 0 ? formatNumber(totalAreaHa) : '-';
+            document.getElementById('statLength').textContent = totalLengthKm > 0 ? formatNumber(totalLengthKm) : '-';
+
+            initMap();
+            renderTable();
+        }
+
+        function initMap() {
+            if (!map) {
+                map = L.map('map').setView([0, 0], 2);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+            }
+            if (geojsonLayer) {
+                geojsonLayer.clearLayers();
+            }
+            layerMap = {};
+
+            const features = currentData.data.features;
+            
+            const getColor = (type, supported) => {
+                if (!supported) return 'var(--unsup-color)';
+                if (type && type.includes('Polygon')) return 'var(--poly-color)';
+                if (type && type.includes('Line')) return 'var(--line-color)';
+                return 'var(--point-color)';
+            };
+
+            const geoJsonData = features.map(f => {
+                if (!f.geometry) return null;
+                return {
+                    type: "Feature",
+                    geometry: f.geometry,
+                    properties: { ...f }
+                };
+            }).filter(Boolean);
+
+            geojsonLayer = L.geoJSON(geoJsonData, {
+                style: function (feature) {
+                    const type = feature.properties.geometry_type;
+                    const supported = feature.properties.measurement.supported;
+                    const color = getColor(type, supported);
+                    return { color: color, weight: 2, fillColor: color, fillOpacity: 0.2 };
+                },
+                pointToLayer: function (feature, latlng) {
+                    const color = getColor(feature.properties.geometry_type, feature.properties.measurement.supported);
+                    return L.circleMarker(latlng, { radius: 6, fillColor: color, color: '#fff', weight: 1, opacity: 1, fillOpacity: 0.8 });
+                },
+                onEachFeature: function (feature, layer) {
+                    layerMap[feature.properties.index] = layer;
+                    layer.on('click', () => highlightRow(feature.properties.index));
+                    
+                    const m = feature.properties.measurement;
+                    const name = Object.values(feature.properties.properties)[0] || 'Feature';
+                    
+                    // SECURITY: Create popup content safely using DOM elements, NOT innerHTML for user data
+                    const div = document.createElement('div');
+                    const b = document.createElement('b');
+                    b.textContent = name;
+                    div.appendChild(b);
+                    div.appendChild(document.createElement('br'));
+                    const span = document.createElement('span');
+                    span.textContent = `${feature.properties.geometry_type}`;
+                    div.appendChild(span);
+                    
+                    if (m.supported) {
+                        if (m.area_hectares) {
+                            div.appendChild(document.createElement('br'));
+                            div.appendChild(document.createTextNode(`Area: ${formatNumber(m.area_hectares)} ha`));
+                        }
+                        if (m.length_m) {
+                            div.appendChild(document.createElement('br'));
+                            div.appendChild(document.createTextNode(`Length: ${formatNumber(m.length_m)} m`));
+                        }
+                    } else {
+                        div.appendChild(document.createElement('br'));
+                        div.appendChild(document.createTextNode(`Unsupported: ${m.note}`));
+                    }
+                    
+                    layer.bindPopup(div);
+                }
+            }).addTo(map);
+
+            if (geoJsonData.length > 0) {
+                map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+            }
+        }
+
+        // -- TABLE & INTERACTION --
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            rowElements = {};
+
+            let features = [...currentData.data.features];
+            
+            // Filter
+            if (activeFilter !== 'All') {
+                features = features.filter(f => {
+                    if (activeFilter === 'Unsupported') return !f.measurement.supported;
+                    return f.geometry_type && f.geometry_type.includes(activeFilter);
+                });
+            }
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                features = features.filter(f => JSON.stringify(f.properties).toLowerCase().includes(q));
+            }
+
+            // Sort
+            features.sort((a, b) => {
+                let va, vb;
+                if (sortCol === 'index') { va = a.index; vb = b.index; }
+                else if (sortCol === 'geometry_type') { va = a.geometry_type || ''; vb = b.geometry_type || ''; }
+                else if (sortCol === 'name') { va = Object.values(a.properties)[0] || ''; vb = Object.values(b.properties)[0] || ''; }
+                else if (sortCol === 'area') { va = a.measurement.area_sq_m || 0; vb = b.measurement.area_sq_m || 0; }
+                else if (sortCol === 'area_ha') { va = a.measurement.area_hectares || 0; vb = b.measurement.area_hectares || 0; }
+                else if (sortCol === 'length') { va = a.measurement.length_m || 0; vb = b.measurement.length_m || 0; }
+                
+                if (va < vb) return sortAsc ? -1 : 1;
+                if (va > vb) return sortAsc ? 1 : -1;
+                return 0;
+            });
+
+            features.forEach(f => {
+                const tr = document.createElement('tr');
+                tr.onclick = () => {
+                    highlightRow(f.index);
+                    if (layerMap[f.index]) {
+                        const layer = layerMap[f.index];
+                        if (layer.getBounds) map.fitBounds(layer.getBounds());
+                        else if (layer.getLatLng) map.setView(layer.getLatLng(), 15);
+                        layer.openPopup();
+                    }
+                    toggleDetails(f.index);
+                };
+                
+                const m = f.measurement;
+                const nameStr = Object.values(f.properties)[0] || '';
+                
+                // SECURITY: Create td elements safely
+                const createTd = (text) => {
+                    const td = document.createElement('td');
+                    td.textContent = text;
+                    return td;
+                };
+
+                tr.appendChild(createTd(f.index));
+                
+                // Type chip
+                const typeTd = document.createElement('td');
+                const chip = document.createElement('span');
+                chip.className = 'badge';
+                chip.textContent = f.geometry_type || 'Unknown';
+                typeTd.appendChild(chip);
+                tr.appendChild(typeTd);
+
+                tr.appendChild(createTd(String(nameStr).substring(0,30)));
+                tr.appendChild(createTd(formatNumber(m.area_sq_m)));
+                tr.appendChild(createTd(formatNumber(m.area_hectares)));
+                tr.appendChild(createTd(formatNumber(m.length_m)));
+                
+                tbody.appendChild(tr);
+                rowElements[f.index] = tr;
+
+                // Details row
+                const detailsTr = document.createElement('tr');
+                detailsTr.className = 'details-row';
+                detailsTr.id = `details-${f.index}`;
+                const detailsTd = document.createElement('td');
+                detailsTd.colSpan = 6;
+                const detailsDiv = document.createElement('div');
+                detailsDiv.className = 'details-content';
+                detailsDiv.textContent = JSON.stringify(f.properties, null, 2);
+                detailsTd.appendChild(detailsDiv);
+                detailsTr.appendChild(detailsTd);
+                tbody.appendChild(detailsTr);
+            });
+        }
+
+        function highlightRow(index) {
+            Object.values(rowElements).forEach(tr => tr.classList.remove('active'));
+            if (rowElements[index]) {
+                rowElements[index].classList.add('active');
+                rowElements[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function toggleDetails(index) {
+            const row = document.getElementById(`details-${index}`);
+            if (row) row.classList.toggle('open');
+        }
+
+        // Setup Sort & Filters
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sort;
+                if (sortCol === col) sortAsc = !sortAsc;
+                else { sortCol = col; sortAsc = true; }
+                renderTable();
+            });
+        });
+
+        document.querySelectorAll('.chip[data-filter]').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                activeFilter = chip.dataset.filter;
+                renderTable();
+            });
+        });
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            searchQuery = e.target.value;
+            renderTable();
+        });
+
+        // Exports
+        document.getElementById('btnJson').addEventListener('click', () => {
+            if (!currentData) return;
+            const blob = new Blob([JSON.stringify(currentData.data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `measurements_${currentData.fileInfo.id}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('btnCsv').addEventListener('click', () => {
+            if (!currentData) return;
+            const headers = ['Index', 'Type', 'CRS', 'Properties', 'Area_sq_m', 'Area_ha', 'Length_m', 'Supported', 'Note'];
+            const rows = currentData.data.features.map(f => {
+                const m = f.measurement;
+                return [
+                    f.index,
+                    f.geometry_type,
+                    f.crs,
+                    JSON.stringify(f.properties).replace(/"/g, '""'), // escape quotes for CSV
+                    m.area_sq_m,
+                    m.area_hectares,
+                    m.length_m,
+                    m.supported,
+                    (m.note || '').replace(/"/g, '""')
+                ].map(v => `"${v === null || v === undefined ? '' : v}"`).join(',');
+            });
+            const csv = [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `measurements_${currentData.fileInfo.id}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
