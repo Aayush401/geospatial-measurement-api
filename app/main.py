@@ -1,10 +1,12 @@
 import logging
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import files
+from app.config import settings
 from app.database import Base, engine
 from app.exceptions import (
     FileProcessingError,
@@ -14,6 +16,8 @@ from app.exceptions import (
 )
 
 logging.basicConfig(level=logging.INFO)
+
+os.makedirs(os.path.join(settings.DATA_DIR, "uploads"), exist_ok=True)
 
 Base.metadata.create_all(bind=engine)
 
